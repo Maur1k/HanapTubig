@@ -22,7 +22,7 @@ Do not commit service-account private keys, admin SDK credentials, passwords, or
 
 ## Current authorization gap
 
-The current Flutter code performs direct updates to `refill_stations/{stationId}` for both `isOpen` status and station details. The map screen exposes these controls in the user interface. The repository did not contain a `firestore.rules` file when reviewed, and the app does not currently integrate Firebase Authentication.
+The current Flutter code performs direct updates to `refill_stations/{stationId}` for both `isOpen` status and station details. The map screen exposes these controls in the user interface. The repository now includes `etr_mad/firestore.rules`, configured in `etr_mad/firebase.json`. These baseline rules allow public reads of `refill_stations` and deny all writes and access to other collections. The app does not currently integrate Firebase Authentication, so there is no authorized editor role yet.
 
 This means the code alone does not establish an administrator role. Hiding buttons in Flutter is not authorization. Do not deploy permissive rules or assume public writes are safe.
 
@@ -41,8 +41,8 @@ For the public app:
 
 1. Inspect the live Firestore data and confirm the complete field schema.
 2. Decide whether public reads should include all station fields or a public-safe subset.
-3. Implement rules in a reviewed `firestore.rules` file.
-4. Configure the Firebase Emulator Suite and write tests for allowed reads, denied writes, authorized edits, malformed fields, and unauthenticated requests.
+3. Configure the Firebase Emulator Suite and test the current baseline: public reads of `refill_stations` succeed, writes fail, and all other collections are denied.
+4. If editing is needed, implement Firebase Authentication and a trusted administrator role before changing the write rules. Test authorized edits, malformed fields, and unauthenticated requests.
 5. Test the app against the rules in a non-production Firebase project.
 6. Deploy rules to the intended Firebase project only after reviewing the target project and test results.
 
