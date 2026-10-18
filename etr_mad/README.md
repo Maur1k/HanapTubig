@@ -1,16 +1,42 @@
-# etr_mad
+# HanapTubig Flutter app
 
-A new Flutter project.
+Run from this directory:
 
-## Getting Started
+```bash
+flutter pub get
+flutter run
+```
 
-This project is a starting point for a Flutter application.
+The default local/demo mode does not initialize Firebase and loads the
+reviewed Urdaneta City OSM-derived dataset. Firebase reads are explicitly
+opt-in:
 
-A few resources to get you started if this is your first Flutter project:
+```bash
+flutter run --dart-define=HANAPTUBIG_DATA_SOURCE=firebase
+```
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+The map uses OpenStreetMap tiles through `flutter_map`, with visible
+OpenStreetMap attribution. Follow the
+[OpenStreetMap tile policy](https://operations.osmfoundation.org/policies/tiles/).
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Station details are read-only. Direct edits and open/closed writes are
+disabled; future reports require a separate pending-report backend and
+authenticated, server-enforced administrator approval.
+
+The map screen supports trimmed, case-insensitive station-name search and
+All/Open/Closed status filters. The station list and map markers always use the
+same filtered station collection. When location is available, both are ordered
+nearest-first and show a distance; browsing remains available without location.
+Directions use a coordinate-based external Google Maps URL, while calls are
+shown only for sourced phone numbers.
+
+The checked-in dataset contains six named `water_refilling_shop` records from
+the Urdaneta administrative boundary. It currently contains no public-water
+records, photos, addresses, phone numbers, opening hours, or verified records.
+Use the repository's versioned Overpass query and importer to refresh it; see
+the root README. Imported records are unverified unless manually checked, and
+missing operating status is never assumed to be open. Photos are shown only
+when the source explicitly provides an `image` or `wikimedia_commons` tag.
+
+For dataset import guidance, static web deployment, and validation commands,
+see the repository [README](../README.md).

@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+# Python bytecode and test caches
+__pycache__/
+*.py[cod]

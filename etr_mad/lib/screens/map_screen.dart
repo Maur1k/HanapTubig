@@ -1,587 +1,704 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
-import 'dart:ui';
-import 'edit_station_screen.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../data/station_repository.dart';
+import '../models/station.dart';
+import '../presentation/station_filters.dart';
+import '../presentation/station_distance.dart';
+import '../presentation/station_actions.dart';
+import '../theme/app_theme.dart';
 
 class MapScreen extends StatefulWidget {
+  const MapScreen({super.key, required this.repository});
+
+  final StationRepository repository;
+
   @override
-  _MapScreenState createState() => _MapScreenState();
+  State<MapScreen> createState() => _MapScreenState();
 }
 
 class _MapScreenState extends State<MapScreen> {
-  late GoogleMapController mapController;
-  final LatLng center = const LatLng(15.9885, 120.5736);
-  Set<Marker> markers = {};
-  bool loading = false;
-  bool locationPermissionGranted = false;
-  String? errorMessage;
+  static const _defaultCenter = LatLng(15.9885, 120.5736);
+  final _mapController = MapController();
+  final _searchController = TextEditingController();
+  List<Station> _stations = const [];
+  StationStatusFilter _statusFilter = StationStatusFilter.all;
+  bool _loading = true;
+  bool _locating = false;
+  String? _errorMessage;
+  String? _selectedStationId;
+  double? _userLatitude;
+  double? _userLongitude;
 
-  // Add new variables for station data
-  Map<String, dynamic> selectedStation = {};
-  bool isStationOpen = true;
+  List<Station> get _filteredStations => sortStationsByDistance(
+        stations: filterStations(
+          stations: _stations,
+          query: _searchController.text,
+          status: _statusFilter,
+        ),
+        latitude: _userLatitude,
+        longitude: _userLongitude,
+      );
 
   @override
   void initState() {
     super.initState();
-    checkPermissionAndLoad();
+    _searchController.addListener(_onFilterChanged);
+    _loadStations();
   }
 
   @override
   void dispose() {
+    _searchController
+      ..removeListener(_onFilterChanged)
+      ..dispose();
     super.dispose();
   }
 
-  Future<void> checkPermissionAndLoad() async {
+  void _onFilterChanged() => setState(() {});
+
+  Future<void> _loadStations() async {
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _errorMessage = null;
+    });
+
     try {
-      bool granted = await handleLocationPermission();
-      if (granted) {
-        setState(() {
-          locationPermissionGranted = true;
-          errorMessage = null;
-        });
-        await loadStations();
-      }
-    } catch (e) {
+      final stations = await widget.repository.loadStations();
+      if (!mounted) return;
       setState(() {
-        errorMessage = 'Error initializing map: $e';
+        _stations = stations;
+        _loading = false;
       });
+      await _loadAvailableLocation();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _errorMessage = 'Stations could not be loaded. Please try again.';
+      });
+      debugPrint('Station loading failed: $error');
     }
   }
 
-  Future<bool> handleLocationPermission() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
+  Future<void> _loadAvailableLocation() async {
+    if (!await Geolocator.isLocationServiceEnabled()) return;
+    final permission = await Geolocator.checkPermission();
+    if (permission != LocationPermission.whileInUse &&
+        permission != LocationPermission.always) {
+      return;
+    }
     try {
-      serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        setState(() {
-          errorMessage =
-              'Location services are disabled. Please enable them in your device settings.';
-        });
-        return false;
-      }
+      final position = await Geolocator.getCurrentPosition();
+      if (!mounted) return;
+      setState(() {
+        _userLatitude = position.latitude;
+        _userLongitude = position.longitude;
+      });
+    } catch (error) {
+      debugPrint('Current location unavailable: $error');
+    }
+  }
 
-      permission = await Geolocator.checkPermission();
+  Future<void> _showCurrentLocation() async {
+    setState(() => _locating = true);
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        throw StateError('Location services are disabled.');
+      }
+      var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          setState(() {
-            errorMessage =
-                'Location permissions are denied. Please enable them to use the map.';
-          });
-          return false;
-        }
       }
-
-      if (permission == LocationPermission.deniedForever) {
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        throw StateError('Location permission was not granted.');
+      }
+      final position = await Geolocator.getCurrentPosition();
+      if (mounted) {
         setState(() {
-          errorMessage =
-              'Location permissions are permanently denied. Please enable them in your device settings.';
+          _userLatitude = position.latitude;
+          _userLongitude = position.longitude;
         });
-        return false;
       }
-
-      return true;
-    } catch (e) {
-      setState(() {
-        errorMessage = 'Error checking location permission: $e';
-      });
-      return false;
-    }
-  }
-
-  void onMapCreated(GoogleMapController controller) async {
-    mapController = controller;
-    if (!locationPermissionGranted) return;
-
-    try {
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-      mapController.animateCamera(
-        CameraUpdate.newLatLngZoom(
-          LatLng(position.latitude, position.longitude),
-          16.0,
+      _mapController.move(LatLng(position.latitude, position.longitude), 16);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Location is unavailable. You can still browse the station map.',
+          ),
         ),
       );
-    } catch (e) {
-      print('Error getting location: $e');
+      debugPrint('Location unavailable: $error');
+    } finally {
+      if (mounted) setState(() => _locating = false);
     }
   }
 
-  Future<void> loadStations() async {
-    if (!mounted) return;
-
-    setState(() {
-      loading = true;
-      errorMessage = null;
-    });
-
-    try {
-      final snapshot =
-          await FirebaseFirestore.instance.collection('refill_stations').get();
-
-      if (!mounted) return;
-
-      final newMarkers = snapshot.docs.map((doc) {
-        var data = doc.data();
-        return Marker(
-          markerId: MarkerId(doc.id),
-          position: LatLng(
-            data['latitude'] as double,
-            data['longitude'] as double,
-          ),
-          onTap: () => _showStationDetails(doc.id, data),
-        );
-      }).toSet();
-
-      setState(() {
-        markers = newMarkers;
-        loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        loading = false;
-        errorMessage = 'Error loading water stations: $e';
-      });
-    }
+  void _resetFilters() {
+    _searchController.clear();
+    setState(() => _statusFilter = StationStatusFilter.all);
   }
 
-  void _showStationDetails(String stationId, Map<String, dynamic> stationData) {
-    setState(() {
-      selectedStation = {...stationData, 'id': stationId};
-      isStationOpen = stationData['isOpen'] ?? true;
-    });
-
-    showModalBottomSheet(
+  void _showStationDetails(Station station) {
+    setState(() => _selectedStationId = station.id);
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Container(
-          height: MediaQuery.of(context).size.height * 0.7,
-          decoration: BoxDecoration(
+      builder: (context) => SafeArea(
+        child: Container(
+          constraints: const BoxConstraints(maxHeight: 560),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Handle bar
-              Center(
-                child: Container(
-                  margin: EdgeInsets.only(top: 12),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
-              ),
-              // Station Details
-              Padding(
-                padding: EdgeInsets.all(16),
-                child: Column(
+                const SizedBox(height: 20),
+                if (station.photoUrl case final photoUrl?) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Image.network(
+                      photoUrl,
+                      height: 190,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _photoPlaceholder(),
+                    ),
+                  ),
+                  if (station.photoAttribution case final attribution?) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      attribution,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: AppColors.muted,
+                          ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                ] else ...[
+                  _photoPlaceholder(),
+                  const SizedBox(height: 16),
+                ],
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            stationData['name'] ?? 'Water Station',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        Container(
-                          padding:
-                              EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: isStationOpen
-                                ? Colors.green[50]
-                                : Colors.red[50],
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            isStationOpen ? 'OPEN' : 'CLOSED',
-                            style: TextStyle(
-                              color: isStationOpen
-                                  ? Colors.green[700]
-                                  : Colors.red[700],
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 16),
-                    _buildInfoRow(Icons.access_time,
-                        'Hours: ${stationData['hours'] ?? 'Not specified'}'),
-                    SizedBox(height: 8),
-                    _buildInfoRow(Icons.phone,
-                        'Contact: ${stationData['contact'] ?? 'Not specified'}'),
-                    SizedBox(height: 24),
-                    Text(
-                      'Status Report',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () => _updateStationStatus(
-                                stationId, true, setModalState),
-                            icon: Icon(Icons.check_circle_outline,
-                                color: Colors.white),
-                            label: Text(
-                              'Mark as Open',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: isStationOpen
-                                  ? Colors.green
-                                  : Colors.grey[300],
-                              padding: EdgeInsets.symmetric(vertical: 12),
-                            ),
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () => _updateStationStatus(
-                                stationId, false, setModalState),
-                            icon: Icon(Icons.cancel_outlined,
-                                color: Colors.white),
-                            label: Text(
-                              'Mark as Closed',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: !isStationOpen
-                                  ? Colors.red
-                                  : Colors.grey[300],
-                              padding: EdgeInsets.symmetric(vertical: 12),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      onPressed: () =>
-                          _editStationDetails(stationId, stationData),
-                      icon: Icon(Icons.edit, color: Colors.white),
-                      label: Text(
-                        'Edit Station Details',
-                        style: TextStyle(
-                          color: Colors.white,
+                    Expanded(
+                      child: Text(
+                        station.name,
+                        style: const TextStyle(
+                          fontSize: 24,
                           fontWeight: FontWeight.bold,
                         ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue[700],
-                        padding: EdgeInsets.symmetric(vertical: 12),
-                        minimumSize: Size(double.infinity, 0),
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
+                if (station.category case final category?) ...[
+                  _infoRow(Icons.category_outlined, _categoryLabel(category)),
+                  const SizedBox(height: 8),
+                ],
+                if (_distanceFor(station) case final distance?) ...[
+                  _infoRow(Icons.near_me_outlined, formatDistance(distance)),
+                  const SizedBox(height: 8),
+                ],
+                if (station.address case final address?) ...[
+                  _infoRow(Icons.place_outlined, address),
+                  const SizedBox(height: 8),
+                ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _statusChip(station.isOpen),
+                ),
+                const SizedBox(height: 8),
+                _infoRow(
+                  Icons.verified_outlined,
+                  _verificationLabel(station),
+                ),
+                const SizedBox(height: 8),
+                if (station.hours case final hours?) ...[
+                  _infoRow(Icons.access_time, hours),
+                  const SizedBox(height: 8),
+                ],
+                if (station.contact case final contact?)
+                  _infoRow(Icons.phone, contact),
+                if (station.source case final source?) ...[
+                  const SizedBox(height: 8),
+                  _infoRow(
+                    Icons.source_outlined,
+                    station.lastVerified == null
+                        ? 'Source: $source'
+                        : 'Source: $source · Verified ${_dateLabel(station.lastVerified!)}',
+                  ),
+                ],
+                const SizedBox(height: 20),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: directionsUri(station) == null
+                          ? null
+                          : () => _openExternal(
+                                directionsUri(station)!,
+                                'Directions could not be opened.',
+                              ),
+                      icon: const Icon(Icons.directions_outlined),
+                      label: const Text('Directions'),
+                    ),
+                    if (hasValidContact(station.contact))
+                      OutlinedButton.icon(
+                        onPressed: () => _openExternal(
+                          Uri(scheme: 'tel', path: station.contact!.trim()),
+                          'Calling is unavailable on this device.',
+                        ),
+                        icon: const Icon(Icons.call_outlined),
+                        label: const Text('Call'),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                Card(
+                  color: AppColors.background,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      'Station details and status reports are read-only for now. '
+                      'Reports will be enabled after a secure backend and admin '
+                      'approval workflow are available.',
+                      style: TextStyle(
+                        color: AppColors.muted,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String text) {
+  Widget _photoPlaceholder() {
+    return Container(
+      height: 150,
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      alignment: Alignment.center,
+      child: const Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.water_drop_outlined, size: 42, color: AppColors.forest),
+          SizedBox(height: 8),
+          Text('No sourced photo available'),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusChip(bool? isOpen) {
+    final color = _statusColor(isOpen);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        _statusLabel(isOpen),
+        style: TextStyle(color: color, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
+  Color _statusColor(bool? isOpen) {
+    if (isOpen == true) return AppColors.open;
+    if (isOpen == false) return AppColors.closed;
+    return AppColors.sage;
+  }
+
+  String _statusLabel(bool? isOpen) {
+    if (isOpen == true) return 'OPEN';
+    if (isOpen == false) return 'CLOSED';
+    return 'UNVERIFIED';
+  }
+
+  double? _distanceFor(Station station) {
+    if (_userLatitude == null || _userLongitude == null) return null;
+    return distanceInMeters(
+      latitude: _userLatitude!,
+      longitude: _userLongitude!,
+      station: station,
+    );
+  }
+
+  String _verificationLabel(Station station) {
+    final status = switch (station.verificationStatus) {
+      VerificationStatus.verified => 'Verified',
+      VerificationStatus.manuallyVerified => 'Manually verified',
+      VerificationStatus.unverified => 'Unverified',
+    };
+    if (station.lastVerified case final date? when _isStale(date)) {
+      return '$status · stale since ${_dateLabel(date)}';
+    }
+    return station.lastVerified == null
+        ? status
+        : '$status · checked ${_dateLabel(station.lastVerified!)}';
+  }
+
+  bool _isStale(DateTime date) => DateTime.now().difference(date).inDays > 365;
+
+  String _dateLabel(DateTime date) =>
+      '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+  Future<void> _openExternal(Uri uri, String failureMessage) async {
+    try {
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
+          mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(failureMessage)));
+      }
+    } catch (error) {
+      debugPrint('External action failed: $error');
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(failureMessage)));
+      }
+    }
+  }
+
+  String _categoryLabel(String category) {
+    return switch (category) {
+      'water_refilling_shop' => 'Water-refilling shop',
+      'public_drinking_water' => 'Public drinking water',
+      'public_water_point' => 'Public water point',
+      'water_refilling_station' => 'Water-refilling station',
+      _ => category,
+    };
+  }
+
+  Widget _infoRow(IconData icon, String text) {
     return Row(
       children: [
         Icon(icon, size: 20, color: Colors.grey[600]),
-        SizedBox(width: 8),
+        const SizedBox(width: 8),
         Expanded(
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[800],
-            ),
-          ),
+          child: Text(text, style: TextStyle(color: Colors.grey[800])),
         ),
       ],
     );
   }
 
-  Future<void> _updateStationStatus(
-      String stationId, bool isOpen, StateSetter setModalState) async {
-    try {
-      await FirebaseFirestore.instance
-          .collection('refill_stations')
-          .doc(stationId)
-          .update({'isOpen': isOpen});
-
-      setModalState(() {
-        isStationOpen = isOpen;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Station status updated successfully'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to update station status'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  void _editStationDetails(
-      String stationId, Map<String, dynamic> stationData) async {
-    Navigator.pop(context); // Close the bottom sheet
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => EditStationScreen(
-          stationId: stationId,
-          stationData: stationData,
-        ),
-      ),
-    );
-
-    if (result == true) {
-      // Refresh the stations if edit was successful
-      loadStations();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        flexibleSpace: ClipRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(color: Colors.transparent),
-          ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
         ),
-        leading: Container(
-          margin: EdgeInsets.only(left: 8),
-          decoration: BoxDecoration(
-            color: Colors.blue.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
+        title: const Text('Explore stations'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadStations,
+            tooltip: 'Refresh stations',
           ),
-          child: IconButton(
-            icon: Icon(Icons.arrow_back, color: Colors.blue[700]),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
+        ],
+      ),
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final wideLayout = constraints.maxWidth >= 800;
+            final map = _buildMap();
+            final list = _buildStationList();
+            return Column(
+              children: [
+                _buildSearchControls(),
+                Expanded(
+                  child: wideLayout
+                      ? Row(
+                          children: [
+                            Expanded(child: map),
+                            SizedBox(width: 320, child: list),
+                          ],
+                        )
+                      : Column(
+                          children: [
+                            Expanded(child: map),
+                            SizedBox(height: 220, child: list),
+                          ],
+                        ),
+                ),
+              ],
+            );
+          },
         ),
-        title: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _locating ? null : _showCurrentLocation,
+        tooltip: 'Use my location',
+        child: _locating
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.my_location),
+      ),
+    );
+  }
+
+  Widget _buildSearchControls() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Column(
+        children: [
+          TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search station names',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchController.text.isEmpty
+                  ? null
+                  : IconButton(
+                      onPressed: _searchController.clear,
+                      icon: const Icon(Icons.clear),
+                      tooltip: 'Clear search',
+                    ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SegmentedButton<StationStatusFilter>(
+              segments: const [
+                ButtonSegment(
+                  value: StationStatusFilter.all,
+                  label: Text('All'),
+                ),
+                ButtonSegment(
+                  value: StationStatusFilter.open,
+                  label: Text('Open'),
+                ),
+                ButtonSegment(
+                  value: StationStatusFilter.closed,
+                  label: Text('Closed'),
+                ),
+              ],
+              selected: {_statusFilter},
+              onSelectionChanged: (selection) {
+                setState(() => _statusFilter = selection.first);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMap() {
+    return Stack(
+      children: [
+        FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: _defaultCenter,
+            initialZoom: 14,
+            interactionOptions: const InteractionOptions(
+              flags: InteractiveFlag.all,
+            ),
+          ),
           children: [
-            Icon(Icons.water_drop, color: Colors.blue[700]),
-            SizedBox(width: 8),
-            Text(
-              'HanapTubig',
-              style: TextStyle(
-                color: Colors.blue[700],
-                fontWeight: FontWeight.bold,
-                fontSize: 24,
-              ),
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.hanaptubig.etr_mad',
+            ),
+            MarkerLayer(
+              markers: _filteredStations
+                  .map(
+                    (station) => Marker(
+                      point: LatLng(station.latitude, station.longitude),
+                      width: 48,
+                      height: 48,
+                      child: GestureDetector(
+                        onTap: () => _showStationDetails(station),
+                        child: Icon(
+                          Icons.location_on,
+                          size: 44,
+                          color: station.id == _selectedStationId
+                              ? AppColors.forest
+                              : _statusColor(station.isOpen),
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+            RichAttributionWidget(
+              attributions: [
+                TextSourceAttribution(
+                  'OpenStreetMap contributors',
+                  onTap: () {},
+                ),
+              ],
             ),
           ],
         ),
-        centerTitle: true,
-        actions: [
-          Container(
-            margin: EdgeInsets.only(right: 8),
-            decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: IconButton(
-              icon: Icon(Icons.refresh, color: Colors.blue[700]),
-              onPressed: loadStations,
-              tooltip: 'Refresh Stations',
-            ),
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          GoogleMap(
-            onMapCreated: onMapCreated,
-            initialCameraPosition: CameraPosition(
-              target: center,
-              zoom: 14.0,
-            ),
-            markers: markers,
-            myLocationEnabled: locationPermissionGranted,
-            myLocationButtonEnabled: locationPermissionGranted,
-            mapToolbarEnabled: false,
-            zoomControlsEnabled: false,
-          ),
-          if (loading)
-            Container(
-              color: Colors.black12,
-              child: Center(
-                child: Card(
-                  elevation: 8,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.blue),
-                        ),
-                        SizedBox(height: 16),
-                        Text(
-                          'Loading Stations...',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+        if (_loading) _statusOverlay(const CircularProgressIndicator()),
+        if (_errorMessage != null)
+          _statusOverlay(
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, color: Colors.red, size: 44),
+                const SizedBox(height: 12),
+                Text(_errorMessage!, textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: _loadStations,
+                  child: const Text('Retry'),
                 ),
-              ),
+              ],
             ),
-          if (errorMessage != null)
-            Container(
-              color: Colors.black12,
-              padding: EdgeInsets.all(16),
-              child: Center(
-                child: Card(
-                  elevation: 8,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.red[50],
-                            shape: BoxShape.circle,
+          ),
+        if (!_loading && _errorMessage == null && _stations.isEmpty)
+          _emptyDatasetNotice(),
+        if (!_loading &&
+            _errorMessage == null &&
+            _stations.isNotEmpty &&
+            _filteredStations.isEmpty)
+          _noMatchesNotice(),
+      ],
+    );
+  }
+
+  Widget _buildStationList() {
+    final stations = _filteredStations;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+      child: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage != null
+              ? const Center(child: Text('Station list unavailable.'))
+              : stations.isEmpty
+                  ? const Center(child: Text('No matching stations.'))
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(8),
+                      itemCount: stations.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final station = stations[index];
+                        return ListTile(
+                          onTap: () => _showStationDetails(station),
+                          leading: Icon(
+                            Icons.location_on,
+                            color: station.id == _selectedStationId
+                                ? AppColors.forest
+                                : _statusColor(station.isOpen),
                           ),
-                          child: Icon(
-                            Icons.error_outline,
-                            color: Colors.red[700],
-                            size: 48,
-                          ),
-                        ),
-                        SizedBox(height: 24),
-                        Text(
-                          errorMessage!,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey[800],
-                            height: 1.5,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        SizedBox(height: 24),
-                        ElevatedButton(
-                          onPressed: () {
-                            setState(() => errorMessage = null);
-                            checkPermissionAndLoad();
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue[700],
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 32,
-                              vertical: 12,
-                            ),
-                          ),
-                          child: Text(
-                            'Retry',
+                          title: Text(station.name),
+                          subtitle: Text(
+                            [
+                              _statusLabel(station.isOpen),
+                              if (_distanceFor(station) case final distance?)
+                                formatDistance(distance),
+                            ].join(' · '),
                             style: TextStyle(
-                              fontSize: 16,
+                              color: _statusColor(station.isOpen),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                        ),
-                      ],
+                          trailing: const Icon(Icons.chevron_right),
+                        );
+                      },
                     ),
-                  ),
+    );
+  }
+
+  Widget _statusOverlay(Widget child) {
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.12),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.all(24),
+        child: Card(
+          child: Padding(padding: const EdgeInsets.all(20), child: child),
+        ),
+      ),
+    );
+  }
+
+  Widget _emptyDatasetNotice() {
+    return Positioned(
+      left: 16,
+      right: 16,
+      bottom: 24,
+      child: Card(
+        color: Colors.white.withValues(alpha: 0.94),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Text(
+            'No station dataset is configured yet. The map is available; '
+            'add an authorized dataset or enable Firebase reads to show '
+            'station markers.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _noMatchesNotice() {
+    return Positioned(
+      left: 16,
+      right: 16,
+      bottom: 24,
+      child: Card(
+        color: Colors.white.withValues(alpha: 0.94),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'No stations match the current search and status filter.',
                 ),
               ),
-            ),
-        ],
+              TextButton(
+                onPressed: _resetFilters,
+                child: const Text('Clear'),
+              ),
+            ],
+          ),
+        ),
       ),
-      floatingActionButton: locationPermissionGranted
-          ? Container(
-              margin: EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: IconButton(
-                icon: Icon(Icons.my_location, color: Colors.blue[700]),
-                onPressed: () async {
-                  try {
-                    Position position = await Geolocator.getCurrentPosition(
-                      desiredAccuracy: LocationAccuracy.high,
-                    );
-                    mapController.animateCamera(
-                      CameraUpdate.newLatLngZoom(
-                        LatLng(position.latitude, position.longitude),
-                        16.0,
-                      ),
-                    );
-                  } catch (e) {
-                    print('Error getting location: $e');
-                  }
-                },
-                tooltip: 'My Location',
-              ),
-            )
-          : null,
     );
   }
 }

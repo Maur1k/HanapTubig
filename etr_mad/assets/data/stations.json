@@ -1,0 +1,62 @@
+[
+  {
+    "id": "osm:node/12640778308",
+    "name": "Prince Liam Water Refilling",
+    "latitude": 16.0088518,
+    "longitude": 120.5684852,
+    "source": "OpenStreetMap",
+    "sourceId": "node/12640778308",
+    "category": "water_refilling_shop",
+    "verificationStatus": "unverified"
+  },
+  {
+    "id": "osm:node/7345323885",
+    "name": "24 Drops Water Refilling Station",
+    "latitude": 15.9828737,
+    "longitude": 120.5803172,
+    "source": "OpenStreetMap",
+    "sourceId": "node/7345323885",
+    "category": "water_refilling_shop",
+    "verificationStatus": "unverified"
+  },
+  {
+    "id": "osm:node/8985758642",
+    "name": "Biogreen Purified Drinking Water",
+    "latitude": 15.9765248,
+    "longitude": 120.5635578,
+    "source": "OpenStreetMap",
+    "sourceId": "node/8985758642",
+    "category": "water_refilling_shop",
+    "verificationStatus": "unverified"
+  },
+  {
+    "id": "osm:node/8987760865",
+    "name": "Aquabest",
+    "latitude": 15.9756783,
+    "longitude": 120.5732936,
+    "source": "OpenStreetMap",
+    "sourceId": "node/8987760865",
+    "category": "water_refilling_shop",
+    "verificationStatus": "unverified"
+  },
+  {
+    "id": "osm:node/8987760879",
+    "name": "Aqua Serv",
+    "latitude": 15.9756802,
+    "longitude": 120.5724366,
+    "source": "OpenStreetMap",
+    "sourceId": "node/8987760879",
+    "category": "water_refilling_shop",
+    "verificationStatus": "unverified"
+  },
+  {
+    "id": "osm:node/9048507160",
+    "name": "High Point Water Refilling Services",
+    "latitude": 15.9750517,
+    "longitude": 120.55933,
+    "source": "OpenStreetMap",
+    "sourceId": "node/9048507160",
+    "category": "water_refilling_shop",
+    "verificationStatus": "unverified"
+  }
+]

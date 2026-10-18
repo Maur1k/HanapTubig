@@ -1,234 +1,164 @@
 import 'package:flutter/material.dart';
+
+import '../data/station_repository.dart';
+import '../theme/app_theme.dart';
 import 'map_screen.dart';
 
 class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key, required this.repository});
+
+  final StationRepository repository;
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      body: Stack(
-        children: [
-          // Gradient background with pattern overlay
-          Container(
-            width: double.infinity,
-            height: double.infinity,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Colors.blue.shade400,
-                  Colors.lightBlue.shade200,
-                  Colors.blue.shade600,
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+      body: SafeArea(
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppColors.primaryLight,
+                AppColors.sage,
+                AppColors.primaryDark,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
           ),
-          CustomPaint(
-            size: Size.infinite,
-            painter: PatternPainter(),
-          ),
-
-          // Main content
-          SafeArea(
-            child: Column(
-              children: [
-                // Enhanced header
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-                  child: Row(
-                    children: [
-                      Hero(
-                        tag: 'app_icon',
-                        child: Container(
-                          padding: EdgeInsets.all(8),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1120),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.9),
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black12,
-                                offset: Offset(0, 4),
-                                blurRadius: 8,
-                              ),
-                            ],
+                            color: AppColors.forest,
+                            borderRadius: BorderRadius.circular(14),
                           ),
-                          child: Image.asset(
-                            'assets/icon/icon.png',
-                            height: 40,
-                            width: 40,
-                            fit: BoxFit.cover,
+                          child: const Icon(
+                            Icons.water_drop_outlined,
+                            color: Colors.white,
+                            size: 27,
                           ),
                         ),
-                      ),
-                      SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'HanapTubig',
-                              style: TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                                letterSpacing: 1,
-                                shadows: [
-                                  Shadow(
-                                    offset: Offset(0, 2),
-                                    blurRadius: 4,
-                                    color: Colors.black26,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Text(
-                              'Ang Gabay sa Malinis na Tubig',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.white.withOpacity(0.9),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                Spacer(),
-
-                // Enhanced main button
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => MapScreen()),
-                        );
-                      },
-                      borderRadius: BorderRadius.circular(28),
-                      child: Container(
-                        height: 180,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(28),
-                          gradient: LinearGradient(
-                            colors: [
-                              Colors.blue.shade600,
-                              Colors.blue.shade800
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.blue.withOpacity(0.3),
-                              offset: Offset(0, 8),
-                              blurRadius: 16,
-                            ),
-                          ],
-                        ),
-                        child: Center(
+                        const SizedBox(width: 14),
+                        Expanded(
                           child: Column(
-                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              ShaderMask(
-                                shaderCallback: (bounds) => LinearGradient(
-                                  colors: [Colors.white, Colors.white70],
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                ).createShader(bounds),
-                                child: Icon(
-                                  Icons.water_drop_rounded,
-                                  color: Colors.white,
-                                  size: 70,
-                                ),
-                              ),
-                              SizedBox(height: 12),
                               Text(
-                                'Maghanap ng Tubigan',
+                                'HanapTubig',
                                 style: TextStyle(
+                                  color: Colors.white,
                                   fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                  letterSpacing: 1.5,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.4,
                                 ),
                               ),
-                              SizedBox(height: 4),
+                              SizedBox(height: 2),
                               Text(
-                                'I-tap para mahanap ang pinakamalapit na tubigan',
+                                'Find reliable water nearby',
                                 style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.9),
                                   fontSize: 14,
-                                  color: Colors.white.withOpacity(0.9),
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                Spacer(),
-
-                // Enhanced tagline
-                Container(
-                  margin: EdgeInsets.only(bottom: 24),
-                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    'Para sa mas madaling paghahanap ng malinis na tubig',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white,
-                      shadows: [
-                        Shadow(
-                          offset: Offset(0, 1),
-                          blurRadius: 2,
-                          color: Colors.black26,
                         ),
                       ],
                     ),
-                    textAlign: TextAlign.center,
-                  ),
+                    const Spacer(),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 640),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Water, when you need it.',
+                            style: theme.textTheme.displaySmall?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            'Browse nearby water-refilling stations on a clear, '
+                            'simple map.',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: Colors.white.withValues(alpha: 0.9),
+                              height: 1.45,
+                            ),
+                          ),
+                          const SizedBox(height: 28),
+                          SizedBox(
+                            height: 56,
+                            child: FilledButton.icon(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        MapScreen(repository: repository),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.map_outlined),
+                              label: const Text('Explore stations'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: AppColors.primaryDark,
+                                foregroundColor: Colors.white,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 24),
+                                textStyle: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.verified_outlined,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'OpenStreetMap-powered browsing. Location access is optional.',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.9),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
-}
-
-// Custom painter for background pattern
-class PatternPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withOpacity(0.05)
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
-
-    final spacing = 30.0;
-    for (double i = 0; i < size.width + size.height; i += spacing) {
-      canvas.drawLine(
-        Offset(0, i),
-        Offset(i, 0),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
 }

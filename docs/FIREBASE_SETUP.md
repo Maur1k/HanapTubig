@@ -15,14 +15,20 @@ Client configuration values identify Firebase applications; they do not authoriz
 3. From the `etr_mad/` directory, configure FlutterFire for your project with the FlutterFire CLI.
 4. Ensure the generated `firebase_options.dart`, `firebase.json`, and Android configuration correspond to the intended Firebase project and Android package name.
 5. Enable Cloud Firestore and create the expected station documents.
-6. Configure Google Maps API keys separately for each target platform. Restrict keys by application and API where supported.
+6. If using Firebase station reads, run the app with
+   `--dart-define=HANAPTUBIG_DATA_SOURCE=firebase`.
 7. Run `flutter pub get`, then build and test on each platform you intend to claim as supported.
 
 Do not commit service-account private keys, admin SDK credentials, passwords, or local secret files. If you switch Firebase projects, review all client configuration files together rather than changing only one.
 
 ## Current authorization gap
 
-The current Flutter code performs direct updates to `refill_stations/{stationId}` for both `isOpen` status and station details. The map screen exposes these controls in the user interface. The repository now includes `etr_mad/firestore.rules`, configured in `etr_mad/firebase.json`. These baseline rules allow public reads of `refill_stations` and deny all writes and access to other collections. The app does not currently integrate Firebase Authentication, so there is no authorized editor role yet.
+The current Flutter client does not update `refill_stations/{stationId}`. The
+map is read-only and the repository includes `etr_mad/firestore.rules`,
+configured in `etr_mad/firebase.json`. These baseline rules allow public reads
+of `refill_stations` and deny all writes and access to other collections. The
+app does not currently integrate Firebase Authentication, so there is no
+authorized editor role yet.
 
 This means the code alone does not establish an administrator role. Hiding buttons in Flutter is not authorization. Do not deploy permissive rules or assume public writes are safe.
 
@@ -35,7 +41,10 @@ For the public app:
 - Decide how station managers will authenticate before enabling editing.
 - If only trusted administrators may edit, use Firebase Authentication plus an enforceable role/claim or a separate trusted backend. Do not rely on a client-supplied `isAdmin` field.
 - Validate field names, types, allowed changes, and required values in Firestore Security Rules.
-- If users should submit open/closed reports, store reports separately from the canonical station status. Add a moderation or trusted update flow rather than allowing arbitrary clients to overwrite station data.
+- If users should submit open/closed reports, store reports separately from the
+canonical station status. Add a moderation or trusted update flow rather than
+allowing arbitrary clients to overwrite station data. The current client
+intentionally displays a report-unavailable notice.
 
 ## Before deploying rules
 
