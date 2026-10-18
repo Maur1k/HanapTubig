@@ -81,7 +81,7 @@ The app currently reads station documents from the `refill_stations` collection.
 
 Firebase project configuration is present in `etr_mad/lib/firebase_options.dart`, `etr_mad/firebase.json`, and the Android Google Services configuration. These files identify client apps and are not a substitute for access control. Review and configure API-key restrictions and Firestore Security Rules for your own deployment.
 
-**Security warning:** the current app code contains direct Firestore updates for station status and station details, and this repository does not currently contain a `firestore.rules` file. Do not assume writes are restricted. Before using real data, define who may edit stations, implement and deploy restrictive Firestore Security Rules, and test the rules with the Firebase Emulator Suite. See the security checklist in [Firebase setup](docs/FIREBASE_SETUP.md).
+**Security status:** an initial Firestore rules file now allows public reads of `refill_stations` and denies all client writes. This is intentionally read-only because the app does not yet implement Firebase Authentication or an administrator role. The rules have been committed but have **not** been deployed to Firebase. Test them with the Firebase Emulator Suite before deploying. See [Firebase setup](docs/FIREBASE_SETUP.md).
 
 ## Supported platforms
 
